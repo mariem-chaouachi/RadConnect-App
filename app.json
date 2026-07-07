@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "RadConnect",
+    "slug": "radconnect",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F5F7FB"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F7FB"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
