@@ -4,7 +4,7 @@ const dict = {
     tagline: "Secure radiology workflow & communication",
     signOut: "Sign out",
 
-    nav: { dashboard: "Dashboard", newCase: "New case", notifications: "Notifications" },
+    nav: { dashboard: "Dashboard", newCase: "New case", notifications: "Notifications", profile: "Profile" },
 
     role: {
       technician: "Technician",
@@ -62,6 +62,8 @@ const dict = {
       openQuestions: "{n} open",
       awaitingYou: "Needs your reply",
       awaitingTech: "You replied · pending tech",
+      confirmCompleteTitle: "Mark case as completed?",
+      confirmCompleteMessage: "Are you sure {id} is done? You can still reopen it later by sending a new message.",
     },
 
     priority: { emergency: "Emergency", urgent: "Urgent", normal: "Normal" },
@@ -87,6 +89,8 @@ const dict = {
       questions: "Clinical questions for the radiologist",
       note: "Note (optional)",
       notePlaceholder: "Anything else the radiologist should know…",
+      attachImage: "Reference image (optional)",
+      addImage: "Add image",
       cancel: "Cancel",
       createCase: "Create case",
     },
@@ -102,6 +106,10 @@ const dict = {
       no: "No",
       assignToMe: "Assign to me",
       markCompleted: "Mark completed",
+      requestImage: "Request image",
+      addImage: "Add image",
+      imageRequestedBanner: "Radiologist requested an additional image.",
+      imageLabelPrefix: "Image",
       writeMessage: "Write a message…",
       noMessages: "No messages yet.",
       replyingTo: "Replying to {name}: {text}",
@@ -112,6 +120,7 @@ const dict = {
     audit: {
       created: "created", viewed: "viewed", messaged: "messaged",
       decided: "decided", completed: "completed", assigned: "assigned", active: "active",
+      reopened: "reopened", image_requested: "image requested", image_added: "image added",
     },
 
     notifications: {
@@ -120,6 +129,16 @@ const dict = {
       emptySub: "New case activity for your role will appear here.",
       updates: "{n} updates",
     },
+
+    profile: {
+      heading: "Profile",
+      language: "Language",
+      saveChanges: "Save changes",
+      saved: "Saved",
+      cancel: "Cancel",
+      signOutConfirmTitle: "Sign out?",
+      signOutConfirmMessage: "You'll need to sign in again to access your cases.",
+    },
   },
 
   fr: {
@@ -127,7 +146,7 @@ const dict = {
     tagline: "Communication sécurisée pour le flux de travail en radiologie",
     signOut: "Déconnexion",
 
-    nav: { dashboard: "Tableau de bord", newCase: "Nouveau cas", notifications: "Notifications" },
+    nav: { dashboard: "Tableau de bord", newCase: "Nouveau cas", notifications: "Notifications", profile: "Profil" },
 
     role: {
       technician: "Technicien",
@@ -185,6 +204,8 @@ const dict = {
       openQuestions: "{n} en attente",
       awaitingYou: "Nécessite votre réponse",
       awaitingTech: "Répondu · en attente du technicien",
+      confirmCompleteTitle: "Marquer le cas comme terminé ?",
+      confirmCompleteMessage: "Êtes-vous sûr que {id} est terminé ? Vous pourrez le rouvrir plus tard en envoyant un nouveau message.",
     },
 
     priority: { emergency: "Urgence", urgent: "Urgent", normal: "Normal" },
@@ -210,6 +231,8 @@ const dict = {
       questions: "Questions cliniques pour le radiologue",
       note: "Note (facultatif)",
       notePlaceholder: "Toute autre information utile pour le radiologue…",
+      attachImage: "Image de référence (facultatif)",
+      addImage: "Ajouter une image",
       cancel: "Annuler",
       createCase: "Créer le cas",
     },
@@ -225,6 +248,10 @@ const dict = {
       no: "Non",
       assignToMe: "M'assigner ce cas",
       markCompleted: "Marquer comme terminé",
+      requestImage: "Demander une image",
+      addImage: "Ajouter une image",
+      imageRequestedBanner: "Le radiologue a demandé une image supplémentaire.",
+      imageLabelPrefix: "Image",
       writeMessage: "Écrire un message…",
       noMessages: "Aucun message pour l'instant.",
       replyingTo: "Réponse à {name} : {text}",
@@ -235,6 +262,7 @@ const dict = {
     audit: {
       created: "créé", viewed: "consulté", messaged: "message envoyé",
       decided: "décision prise", completed: "terminé", assigned: "assigné", active: "activé",
+      reopened: "rouvert", image_requested: "image demandée", image_added: "image ajoutée",
     },
 
     notifications: {
@@ -242,6 +270,16 @@ const dict = {
       emptyLabel: "Vous êtes à jour",
       emptySub: "Les nouvelles activités concernant votre rôle apparaîtront ici.",
       updates: "{n} mises à jour",
+    },
+
+    profile: {
+      heading: "Profil",
+      language: "Langue",
+      saveChanges: "Enregistrer",
+      saved: "Enregistré",
+      cancel: "Annuler",
+      signOutConfirmTitle: "Se déconnecter ?",
+      signOutConfirmMessage: "Vous devrez vous reconnecter pour accéder à vos cas.",
     },
   },
 };

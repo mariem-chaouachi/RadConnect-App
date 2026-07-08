@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 
 import { Ionicons } from "@expo/vector-icons";
 import { theme, MODALITIES, PRIORITIES, QUESTION_LABELS } from "../theme";
 import { Field } from "../components/UI";
+import { uid } from "../data/seed";
 
 export default function NewCaseScreen({ onSubmit, onCancel, isWide, t }) {
   const [modality, setModality] = useState("xray");
@@ -10,8 +11,11 @@ export default function NewCaseScreen({ onSubmit, onCancel, isWide, t }) {
   const [priority, setPriority] = useState("normal");
   const [qTypes, setQTypes] = useState([]);
   const [note, setNote] = useState("");
+  const [images, setImages] = useState([]);
 
   const toggleQ = (k) => setQTypes((qs) => (qs.includes(k) ? qs.filter((x) => x !== k) : [...qs, k]));
+  const addImage = () => setImages((imgs) => [...imgs, { id: uid(), label: `${t("casedetail.imageLabelPrefix")} ${imgs.length + 1}` }]);
+  const removeImage = (id) => setImages((imgs) => imgs.filter((i) => i.id !== id));
 
   return (
     <ScrollView contentContainerStyle={{ padding: isWide ? 24 : 16, maxWidth: 560, width: "100%", alignSelf: "center" }}>
@@ -65,13 +69,29 @@ export default function NewCaseScreen({ onSubmit, onCancel, isWide, t }) {
         />
       </Field>
 
+      <Field label={t("newcase.attachImage")}>
+        {images.map((img) => (
+          <View key={img.id} style={styles.imgRow}>
+            <Ionicons name="image-outline" size={15} color={theme.inkSoft} />
+            <Text style={styles.imgRowText}>{img.label}</Text>
+            <TouchableOpacity onPress={() => removeImage(img.id)}>
+              <Ionicons name="close-circle" size={17} color={theme.inkSoft} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity onPress={addImage} style={styles.addImageBtn}>
+          <Ionicons name="add" size={15} color={theme.blue} />
+          <Text style={styles.addImageText}>{t("newcase.addImage")}</Text>
+        </TouchableOpacity>
+      </Field>
+
       <View style={{ flexDirection: "row", marginTop: 8, marginBottom: 30 }}>
         <TouchableOpacity onPress={onCancel} style={styles.cancelBtn}>
           <Text style={{ fontWeight: "700", fontSize: 13, color: theme.ink }}>{t("newcase.cancel")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           disabled={!patientId.trim()}
-          onPress={() => onSubmit({ modality, priority, note, questionTypes: qTypes })}
+          onPress={() => onSubmit({ modality, priority, note, questionTypes: qTypes, images })}
           style={[styles.submitBtn, { backgroundColor: patientId.trim() ? theme.blue : theme.line }]}
         >
           <Ionicons name="add" size={16} color="#fff" />
@@ -93,6 +113,10 @@ const styles = StyleSheet.create({
   priorityChip: { borderWidth: 1, borderRadius: theme.radiusSm, paddingHorizontal: 14, paddingVertical: 8, marginRight: 6 },
   checkRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: theme.line, borderRadius: theme.radiusSm, padding: 10, marginBottom: 6, backgroundColor: theme.surface },
   checkLabel: { fontSize: 13, marginLeft: 9, color: theme.ink, flex: 1 },
+  imgRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: theme.line, borderRadius: theme.radiusSm, padding: 9, marginBottom: 6, backgroundColor: theme.surface },
+  imgRowText: { flex: 1, fontSize: 12.5, color: theme.ink, marginLeft: 8 },
+  addImageBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.blue, borderStyle: "dashed", borderRadius: 8, paddingVertical: 9 },
+  addImageText: { color: theme.blue, fontWeight: "700", fontSize: 12.5, marginLeft: 4 },
   cancelBtn: { borderWidth: 1, borderColor: theme.line, borderRadius: theme.radiusSm, paddingHorizontal: 16, paddingVertical: 11, marginRight: 8, backgroundColor: theme.surface },
   submitBtn: { flexDirection: "row", alignItems: "center", borderRadius: theme.radiusSm, paddingHorizontal: 16, paddingVertical: 11 },
 });

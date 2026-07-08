@@ -16,6 +16,7 @@ import DashboardScreen from "./src/screens/DashboardScreen";
 import NewCaseScreen from "./src/screens/NewCaseScreen";
 import CaseDetailScreen from "./src/screens/CaseDetailScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
+import ProfileScreen from "./src/screens/ProfileScreen";
 
 export default function App() {
   const { width } = useWindowDimensions();
@@ -87,7 +88,8 @@ export default function App() {
       id, modality: form.modality, priority: form.priority, status: "pending",
       createdBy: currentUser.id, assignedRadiologist: null, createdAt: now(), completedAt: null,
       note: form.note, questions: form.questionTypes.map((qt) => ({ id: uid(), type: qt, answered: false, answerText: null, answeredBy: null })),
-      images: [],
+      images: form.images || [],
+      imageRequested: false,
     };
     setCases((c) => [newCase, ...c]);
     addAudit(id, currentUser.id, "created");
@@ -100,7 +102,18 @@ export default function App() {
     if (!content.trim()) return;
     setMessages((m) => [...m, { id: uid(), caseId, senderId: currentUser.id, content, sentAt: now(), replyTo }]);
     addAudit(caseId, currentUser.id, "messaged");
-    addNotification(role === "technician" ? "radiologist" : "technician", caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} replied on ${caseId}`);
+
+    const targetCase = cases.find((c) => c.id === caseId);
+    const wasCompleted = targetCase?.status === "completed";
+    const recipientRole = role === "technician" ? "radiologist" : "technician";
+
+    if (wasCompleted) {
+      setCases((cs) => cs.map((c) => c.id === caseId ? { ...c, status: "active", completedAt: null } : c));
+      addAudit(caseId, currentUser.id, "reopened");
+      addNotification(recipientRole, caseId, "reopened", `${currentUser.firstName} ${currentUser.lastName} reopened ${caseId} with a new message`);
+    } else {
+      addNotification(recipientRole, caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} replied on ${caseId}`);
+    }
   }
 
   function answerQuestion(caseId, questionId, answerText, questionText) {
@@ -121,10 +134,31 @@ export default function App() {
     addAudit(caseId, currentUser.id, "assigned");
   }
 
+  function requestImage(caseId) {
+    setCases((cs) => cs.map((c) => c.id !== caseId ? c : { ...c, imageRequested: true }));
+    addAudit(caseId, currentUser.id, "image_requested");
+    addNotification("technician", caseId, "image_requested", `${currentUser.firstName} ${currentUser.lastName} requested an image for ${caseId}`);
+  }
+
+  function addImage(caseId, label) {
+    setCases((cs) => cs.map((c) => c.id !== caseId ? c : {
+      ...c, images: [...c.images, { id: uid(), label }], imageRequested: false,
+    }));
+    addAudit(caseId, currentUser.id, "image_added");
+    if (role === "technician") {
+      addNotification("radiologist", caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} added an image to ${caseId}`);
+    }
+  }
+
   function openCase(caseId) {
     setActiveCaseId(caseId);
     setView("caseDetail");
     addAudit(caseId, currentUser.id, "viewed");
+  }
+
+  function updateProfile(updates) {
+    setUsers((arr) => arr.map((u) => u.id === currentUser.id ? { ...u, ...updates } : u));
+    setCurrentUser((u) => ({ ...u, ...updates }));
   }
 
   const NavItems = () => (
@@ -132,6 +166,7 @@ export default function App() {
       <NavItem icon="grid-outline" label={t("nav.dashboard")} active={view === "dashboard" || view === "caseDetail"} onPress={() => setView("dashboard")} />
       {role === "technician" && <NavItem icon="add-circle-outline" label={t("nav.newCase")} active={view === "newCase"} onPress={() => setView("newCase")} />}
       <NavItem icon="notifications-outline" label={t("nav.notifications")} active={view === "notifications"} onPress={() => setView("notifications")} badge={unreadCount} />
+      <NavItem icon="person-circle-outline" label={t("nav.profile")} active={view === "profile"} onPress={() => setView("profile")} />
     </>
   );
 
@@ -152,7 +187,7 @@ export default function App() {
               <View style={styles.badge}><Text style={styles.badgeText}>{unreadCount}</Text></View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setCurrentUser(null)} style={{ marginLeft: 10 }}>
+          <TouchableOpacity onPress={() => setView("profile")} style={{ marginLeft: 10 }}>
             <Avatar initials={currentUser.initials} role={role} size={30} />
           </TouchableOpacity>
         </View>
@@ -174,7 +209,11 @@ export default function App() {
 
         <View style={{ flex: 1 }}>
           {view === "dashboard" && (
-            <DashboardScreen cases={cases} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onOpen={openCase} isWide={isWide} role={role} t={t} messages={messages} users={users} />
+            <DashboardScreen
+              cases={cases} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onOpen={openCase}
+              isWide={isWide} role={role} t={t} messages={messages} users={users}
+              onCompleteCase={(caseId) => setCaseStatus(caseId, "completed")}
+            />
           )}
           {view === "newCase" && <NewCaseScreen onSubmit={createCase} onCancel={() => setView("dashboard")} isWide={isWide} t={t} />}
           {view === "caseDetail" && activeCase && (
@@ -187,6 +226,8 @@ export default function App() {
               onAnswer={(qid, text, questionText) => answerQuestion(activeCase.id, qid, text, questionText)}
               onSetStatus={(s) => setCaseStatus(activeCase.id, s)}
               onAssignSelf={() => assignSelf(activeCase.id)}
+              onRequestImage={() => requestImage(activeCase.id)}
+              onAddImage={(label) => addImage(activeCase.id, label)}
               isWide={isWide}
               t={t}
             />
@@ -198,6 +239,12 @@ export default function App() {
               onOpen={openCase}
               isWide={isWide}
               t={t}
+            />
+          )}
+          {view === "profile" && (
+            <ProfileScreen
+              user={currentUser} onSave={updateProfile} onSignOut={() => setCurrentUser(null)}
+              isWide={isWide} t={t} lang={lang} setLang={setLang}
             />
           )}
         </View>

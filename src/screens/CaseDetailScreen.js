@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { theme, PRIORITIES, STATUSES, QUESTION_LABELS } from "../theme";
+import { theme, PRIORITIES, STATUSES } from "../theme";
 import { Pill, ActionBtn } from "../components/UI";
 import { timeAgo } from "../data/seed";
 
 export default function CaseDetailScreen({
-  c, role, currentUser, users, messages, auditLogs, onBack, onSend, onAnswer, onSetStatus, onAssignSelf, isWide, t,
+  c, role, currentUser, users, messages, auditLogs, onBack, onSend, onAnswer,
+  onSetStatus, onAssignSelf, onRequestImage, onAddImage, isWide, t,
 }) {
   const [text, setText] = useState("");
   const [showAudit, setShowAudit] = useState(false);
@@ -29,6 +30,21 @@ export default function CaseDetailScreen({
     setReplyingTo(null);
   };
 
+  const confirmComplete = () => {
+    Alert.alert(
+      t("dashboard.confirmCompleteTitle"),
+      t("dashboard.confirmCompleteMessage", { id: c.id }),
+      [
+        { text: t("profile.cancel"), style: "cancel" },
+        { text: t("casedetail.markCompleted"), style: "default", onPress: () => onSetStatus("completed") },
+      ]
+    );
+  };
+
+  const handleAddImage = () => {
+    onAddImage(`${t("casedetail.imageLabelPrefix")} ${c.images.length + 1}`);
+  };
+
   return (
     <ScrollView contentContainerStyle={{ padding: isWide ? 24 : 14, maxWidth: 900, width: "100%", alignSelf: "center" }}>
       <TouchableOpacity onPress={onBack} style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
@@ -43,10 +59,15 @@ export default function CaseDetailScreen({
       </View>
       <Text style={styles.note}>{c.note}</Text>
 
-      <View style={{ flexDirection: "row", marginBottom: 14 }}>
-        {role === "radiologist" && !c.assignedRadiologist && <ActionBtn onClick={onAssignSelf} label={t("casedetail.assignToMe")} icon="person-add-outline" />}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 14 }}>
+        {role === "radiologist" && !c.assignedRadiologist && (
+          <ActionBtn onClick={onAssignSelf} label={t("casedetail.assignToMe")} icon="person-add-outline" />
+        )}
+        {role === "radiologist" && c.status !== "completed" && !c.imageRequested && (
+          <ActionBtn onClick={onRequestImage} label={t("casedetail.requestImage")} icon="image-outline" />
+        )}
         {c.status !== "completed" && (
-          <ActionBtn onClick={() => onSetStatus("completed")} label={t("casedetail.markCompleted")} icon="checkmark-circle-outline" primary />
+          <ActionBtn onClick={confirmComplete} label={t("casedetail.markCompleted")} icon="checkmark-circle-outline" primary />
         )}
       </View>
 
@@ -54,8 +75,16 @@ export default function CaseDetailScreen({
         {/* Imaging panel */}
         <View style={[styles.panel, isWide ? { flex: 1 } : {}]}>
           <Text style={styles.panelLabel}>{t("casedetail.imaging")}</Text>
-          {c.images.length === 0 ? (
-            <Text style={{ color: theme.inkSoft, fontSize: 12.5 }}>{t("casedetail.noImages")}</Text>
+
+          {c.imageRequested && (
+            <View style={styles.requestBanner}>
+              <Ionicons name="image-outline" size={14} color={theme.amber} />
+              <Text style={styles.requestBannerText}>{t("casedetail.imageRequestedBanner")}</Text>
+            </View>
+          )}
+
+          {c.images.length === 0 && !c.imageRequested ? (
+            <Text style={{ color: theme.inkSoft, fontSize: 12.5, marginBottom: 8 }}>{t("casedetail.noImages")}</Text>
           ) : (
             c.images.map((img) => (
               <View key={img.id} style={styles.imageBox}>
@@ -67,7 +96,15 @@ export default function CaseDetailScreen({
               </View>
             ))
           )}
-          <Text style={{ fontSize: 11, color: theme.inkSoft }}>{t("casedetail.previewNote")}</Text>
+
+          {role === "technician" && c.status !== "completed" && (
+            <TouchableOpacity onPress={handleAddImage} style={styles.addImageBtn}>
+              <Ionicons name="add" size={15} color={theme.blue} />
+              <Text style={styles.addImageText}>{t("casedetail.addImage")}</Text>
+            </TouchableOpacity>
+          )}
+
+          <Text style={{ fontSize: 11, color: theme.inkSoft, marginTop: 6 }}>{t("casedetail.previewNote")}</Text>
         </View>
 
         {/* Conversation panel */}
@@ -177,9 +214,13 @@ const styles = StyleSheet.create({
   note: { fontSize: 13, color: theme.inkSoft, marginBottom: 12 },
   panel: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: theme.radius, padding: 14, marginBottom: 14 },
   panelLabel: { fontSize: 11.5, fontWeight: "700", color: theme.inkSoft, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.4 },
+  requestBanner: { flexDirection: "row", alignItems: "center", backgroundColor: theme.amberSoft, borderRadius: 8, padding: 8, marginBottom: 10 },
+  requestBannerText: { fontSize: 12, color: theme.amber, marginLeft: 6, flexShrink: 1 },
   imageBox: { backgroundColor: "#161C26", borderRadius: 10, paddingVertical: 30, alignItems: "center", marginBottom: 10 },
   imageLabel: { color: "#C7CDD3", fontSize: 12, marginTop: 6 },
   zoomBtn: { position: "absolute", top: 8, right: 8, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 6, padding: 5 },
+  addImageBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.blue, borderStyle: "dashed", borderRadius: 8, paddingVertical: 8, marginBottom: 4 },
+  addImageText: { color: theme.blue, fontWeight: "700", fontSize: 12.5, marginLeft: 4 },
   questionBox: { backgroundColor: theme.blueSoft, borderRadius: 10, padding: 10, marginBottom: 8 },
   questionText: { fontSize: 12.5, fontWeight: "700", color: theme.blue },
   yesBtn: { backgroundColor: theme.blue, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 5, marginRight: 6 },

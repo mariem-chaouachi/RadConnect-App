@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { theme, PRIORITIES, STATUSES, MODALITIES } from "../theme";
 import { Pill, EmptyState } from "../components/UI";
@@ -16,7 +16,7 @@ function needsRadiologistResponse(c, messages, users) {
   return sender?.role !== "radiologist";
 }
 
-function CaseRow({ c, onOpen, t, role, messages, users }) {
+function CaseRow({ c, onOpen, t, role, messages, users, onCompleteCase }) {
   const p = PRIORITIES[c.priority];
   const s = STATUSES[c.status];
   const modality = MODALITIES.find((m) => m.id === c.modality);
@@ -24,43 +24,62 @@ function CaseRow({ c, onOpen, t, role, messages, users }) {
   const isEmergency = c.priority === "emergency" && c.status !== "completed";
   const showBallInCourt = role === "radiologist" && c.status !== "completed";
   const awaitingRadiologist = showBallInCourt && needsRadiologistResponse(c, messages, users);
+  const showQuickComplete = role === "technician" && c.status !== "completed";
+
+  const confirmComplete = () => {
+    Alert.alert(
+      t("dashboard.confirmCompleteTitle"),
+      t("dashboard.confirmCompleteMessage", { id: c.id }),
+      [
+        { text: t("profile.cancel"), style: "cancel" },
+        { text: t("casedetail.markCompleted"), style: "default", onPress: () => onCompleteCase(c.id) },
+      ]
+    );
+  };
 
   return (
-    <TouchableOpacity
-      onPress={() => onOpen(c.id)}
+    <View
       style={[
         styles.row,
         isEmergency && { backgroundColor: theme.coralSoft, borderColor: theme.coral, borderWidth: 1.5 },
       ]}
     >
-      <View style={[styles.rowIcon, isEmergency && { backgroundColor: "#E7C6BB" }]}>
-        <Ionicons name="scan-outline" size={18} color={isEmergency ? theme.coral : theme.inkSoft} />
-      </View>
-      <View style={{ flex: 1, marginRight: 8 }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Text style={[styles.caseId, isEmergency && { color: theme.coral }]}>{c.id}</Text>
-          <Text style={[styles.modality, isEmergency && { color: theme.coral }]}>  ·  {t(`modality.${modality?.id}`)}</Text>
+      <TouchableOpacity onPress={() => onOpen(c.id)} style={styles.rowMain}>
+        <View style={[styles.rowIcon, isEmergency && { backgroundColor: "#E7C6BB" }]}>
+          <Ionicons name="scan-outline" size={18} color={isEmergency ? theme.coral : theme.inkSoft} />
         </View>
-        <Text style={[styles.note, isEmergency && { color: theme.coral }]} numberOfLines={1}>{c.note}</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 6 }}>
-          {openQ > 0 && <Pill label={t("dashboard.openQuestions", { n: openQ })} fg="inkSoft" bg="line" icon="chatbubble-outline" />}
-          {showBallInCourt && (
-            <Pill
-              label={awaitingRadiologist ? t("dashboard.awaitingYou") : t("dashboard.awaitingTech")}
-              fg={awaitingRadiologist ? "blue" : "sage"}
-              bg={awaitingRadiologist ? "blueSoft" : "sageSoft"}
-            />
-          )}
-          <Pill label={t(`status.${c.status}`)} fg={s.fg} bg={s.bg} />
-          <Pill label={t(`priority.${c.priority}`)} fg={p.fg} bg={p.bg} />
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Text style={[styles.caseId, isEmergency && { color: theme.coral }]}>{c.id}</Text>
+            <Text style={[styles.modality, isEmergency && { color: theme.coral }]}>  ·  {t(`modality.${modality?.id}`)}</Text>
+          </View>
+          <Text style={[styles.note, isEmergency && { color: theme.coral }]} numberOfLines={1}>{c.note}</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 6 }}>
+            {openQ > 0 && <Pill label={t("dashboard.openQuestions", { n: openQ })} fg="inkSoft" bg="line" icon="chatbubble-outline" />}
+            {showBallInCourt && (
+              <Pill
+                label={awaitingRadiologist ? t("dashboard.awaitingYou") : t("dashboard.awaitingTech")}
+                fg={awaitingRadiologist ? "blue" : "sage"}
+                bg={awaitingRadiologist ? "blueSoft" : "sageSoft"}
+              />
+            )}
+            <Pill label={t(`status.${c.status}`)} fg={s.fg} bg={s.bg} />
+            <Pill label={t(`priority.${c.priority}`)} fg={p.fg} bg={p.bg} />
+          </View>
         </View>
-      </View>
-      <Text style={[styles.time, isEmergency && { color: theme.coral }]}>{timeAgo(c.createdAt)}</Text>
-    </TouchableOpacity>
+        <Text style={[styles.time, isEmergency && { color: theme.coral }]}>{timeAgo(c.createdAt)}</Text>
+      </TouchableOpacity>
+
+      {showQuickComplete && (
+        <TouchableOpacity onPress={confirmComplete} style={styles.checkBtn}>
+          <Ionicons name="checkmark-circle-outline" size={24} color={theme.sage} />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 }
 
-export default function DashboardScreen({ cases, statusFilter, setStatusFilter, onOpen, isWide, role, t, messages, users }) {
+export default function DashboardScreen({ cases, statusFilter, setStatusFilter, onOpen, isWide, role, t, messages, users, onCompleteCase }) {
   const filtered = cases.filter((c) => {
     if (role === "radiologist") {
       if (statusFilter === "all") return true;
@@ -104,12 +123,16 @@ export default function DashboardScreen({ cases, statusFilter, setStatusFilter, 
             <Text style={styles.emergencyTitle}>  {t("dashboard.emergencyTitle")}</Text>
             <Text style={styles.emergencySub}>  {t("dashboard.emergencySub")}</Text>
           </View>
-          {emergency.map((c) => <CaseRow key={c.id} c={c} onOpen={onOpen} t={t} role={role} messages={messages} users={users} />)}
+          {emergency.map((c) => (
+            <CaseRow key={c.id} c={c} onOpen={onOpen} t={t} role={role} messages={messages} users={users} onCompleteCase={onCompleteCase} />
+          ))}
         </View>
       )}
 
       {rest.length > 0
-        ? rest.map((c) => <CaseRow key={c.id} c={c} onOpen={onOpen} t={t} role={role} messages={messages} users={users} />)
+        ? rest.map((c) => (
+          <CaseRow key={c.id} c={c} onOpen={onOpen} t={t} role={role} messages={messages} users={users} onCompleteCase={onCompleteCase} />
+        ))
         : emergency.length === 0 && (
           <EmptyState label={t("dashboard.emptyLabel")} sub={t("dashboard.emptySub")} />
         )}
@@ -128,8 +151,10 @@ const styles = StyleSheet.create({
   emergencySub: { fontSize: 12, color: theme.coral },
   row: {
     flexDirection: "row", alignItems: "center", backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-    borderRadius: 10, padding: 12, marginBottom: 8,
+    borderRadius: 10, marginBottom: 8, overflow: "hidden",
   },
+  rowMain: { flex: 1, flexDirection: "row", alignItems: "center", padding: 12 },
+  checkBtn: { paddingHorizontal: 12, alignItems: "center", justifyContent: "center", alignSelf: "stretch", borderLeftWidth: 1, borderLeftColor: theme.line },
   rowIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: theme.line, alignItems: "center", justifyContent: "center", marginRight: 12 },
   caseId: { fontSize: 13, fontWeight: "700", color: theme.ink },
   modality: { fontSize: 12.5, color: theme.inkSoft },
