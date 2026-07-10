@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import Logo from "../components/Logo";
 import LanguageSwitch from "../components/LanguageSwitch";
 import { theme } from "../theme";
-import { uid } from "../data/seed";
+import { api, saveToken } from "../api";
 
-export default function SignUpScreen({ users, onSignUp, onGoToSignIn, t, lang, setLang }) {
+export default function SignUpScreen({ onSignUp, onGoToSignIn, t, lang, setLang }) {
   const [role, setRole] = useState("technician");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -16,8 +16,11 @@ export default function SignUpScreen({ users, onSignUp, onGoToSignIn, t, lang, s
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
+    // These checks stay client-side since they're instant and don't need the server —
+    // but email-already-exists and anything else is now the server's job (it owns the data).
     if (!firstName.trim() || !lastName.trim() || !licenseId.trim() || !specialization.trim() || !email.trim() || !phone.trim() || !password) {
       setError(t("signup.errFillAll"));
       return;
@@ -30,17 +33,27 @@ export default function SignUpScreen({ users, onSignUp, onGoToSignIn, t, lang, s
       setError(t("signup.errPasswordMismatch"));
       return;
     }
-    if (users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
-      setError(t("signup.errEmailExists"));
-      return;
-    }
+
     setError("");
-    const initials = (firstName[0] + lastName[0]).toUpperCase();
-    onSignUp({
-      id: uid(), role, firstName: firstName.trim(), lastName: lastName.trim(),
-      licenseId: licenseId.trim(), specialization: specialization.trim(),
-      email: email.trim(), phone: phone.trim(), password, initials,
-    });
+    setLoading(true);
+    try {
+      const { user, token } = await api.signup({
+        role,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        licenseId: licenseId.trim(),
+        specialization: specialization.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        password,
+      });
+      await saveToken(token);
+      onSignUp(user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,7 +73,7 @@ export default function SignUpScreen({ users, onSignUp, onGoToSignIn, t, lang, s
         <View style={styles.roleRow}>
           {["technician", "radiologist"].map((r) => (
             <TouchableOpacity
-              key={r} onPress={() => setRole(r)}
+              key={r} onPress={() => setRole(r)} disabled={loading}
               style={[styles.roleBtn, role === r && { backgroundColor: theme.blue, borderColor: theme.blue }]}
             >
               <Text style={[styles.roleBtnText, role === r && { color: "#fff" }]}>
@@ -73,42 +86,43 @@ export default function SignUpScreen({ users, onSignUp, onGoToSignIn, t, lang, s
         <View style={styles.row}>
           <View style={styles.half}>
             <Text style={styles.label}>{t("signup.firstName")}</Text>
-            <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Marym" />
+            <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="Marym" editable={!loading} />
           </View>
           <View style={styles.half}>
             <Text style={styles.label}>{t("signup.lastName")}</Text>
-            <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Ben Salah" />
+            <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Ben Salah" editable={!loading} />
           </View>
         </View>
 
         <Text style={styles.label}>{role === "radiologist" ? t("signup.licenseIdRad") : t("signup.licenseIdTech")}</Text>
-        <TextInput style={styles.input} value={licenseId} onChangeText={setLicenseId} placeholder="e.g. RAD-1187" autoCapitalize="characters" />
+        <TextInput style={styles.input} value={licenseId} onChangeText={setLicenseId} placeholder="e.g. RAD-1187" autoCapitalize="characters" editable={!loading} />
 
         <Text style={styles.label}>{role === "radiologist" ? t("signup.specializationRad") : t("signup.specializationTech")}</Text>
         <TextInput
           style={styles.input} value={specialization} onChangeText={setSpecialization}
           placeholder={role === "radiologist" ? t("signup.specializationPlaceholderRad") : t("signup.specializationPlaceholderTech")}
+          editable={!loading}
         />
 
         <Text style={styles.label}>{t("signup.email")}</Text>
-        <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="name@hospital.tn" autoCapitalize="none" keyboardType="email-address" />
+        <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="name@hospital.tn" autoCapitalize="none" keyboardType="email-address" editable={!loading} />
 
         <Text style={styles.label}>{t("signup.phone")}</Text>
-        <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+216 20 000 000" keyboardType="phone-pad" />
+        <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+216 20 000 000" keyboardType="phone-pad" editable={!loading} />
 
         <Text style={styles.label}>{t("signup.password")}</Text>
-        <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder={t("signup.passwordPlaceholder")} secureTextEntry />
+        <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder={t("signup.passwordPlaceholder")} secureTextEntry editable={!loading} />
 
         <Text style={styles.label}>{t("signup.confirmPassword")}</Text>
-        <TextInput style={styles.input} value={confirm} onChangeText={setConfirm} placeholder={t("signup.confirmPasswordPlaceholder")} secureTextEntry />
+        <TextInput style={styles.input} value={confirm} onChangeText={setConfirm} placeholder={t("signup.confirmPasswordPlaceholder")} secureTextEntry editable={!loading} />
 
         {!!error && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={submit}>
-          <Text style={styles.primaryBtnText}>{t("signup.createAccount")}</Text>
+        <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={submit} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{t("signup.createAccount")}</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onGoToSignIn} style={{ marginTop: 16, alignItems: "center", marginBottom: 20 }}>
+        <TouchableOpacity onPress={onGoToSignIn} style={{ marginTop: 16, alignItems: "center", marginBottom: 20 }} disabled={loading}>
           <Text style={styles.link}>{t("signup.alreadyHaveAccount")}</Text>
         </TouchableOpacity>
       </ScrollView>

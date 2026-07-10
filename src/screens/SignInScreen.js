@@ -1,24 +1,34 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from "react-native";
 import Logo from "../components/Logo";
 import { theme } from "../theme";
 import LanguageSwitch from "../components/LanguageSwitch";
+import { api, saveToken } from "../api";
 
-export default function SignInScreen({ users, onSignIn, onGoToSignUp, t, lang, setLang }) {
+export default function SignInScreen({ onSignIn, onGoToSignUp, t, lang, setLang }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const submit = () => {
-    const match = users.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
-    );
-    if (!match) {
+  const submit = async () => {
+    if (!email.trim() || !password) {
       setError(t("signin.error"));
       return;
     }
     setError("");
-    onSignIn(match);
+    setLoading(true);
+    try {
+      const { user, token } = await api.login({ email: email.trim(), password });
+      await saveToken(token);
+      onSignIn(user);
+    } catch (err) {
+      // err.message comes either from our backend's {"error": "..."} response,
+      // or from api.js's own "Could not reach the server" message on a network failure.
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -38,21 +48,23 @@ export default function SignInScreen({ users, onSignIn, onGoToSignUp, t, lang, s
         <TextInput
           style={styles.input} value={email} onChangeText={setEmail}
           placeholder="name@hospital.tn" autoCapitalize="none" keyboardType="email-address"
+          editable={!loading}
         />
 
         <Text style={styles.label}>{t("signin.password")}</Text>
         <TextInput
           style={styles.input} value={password} onChangeText={setPassword}
           placeholder="••••••••" secureTextEntry
+          editable={!loading}
         />
 
         {!!error && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={submit}>
-          <Text style={styles.primaryBtnText}>{t("signin.signIn")}</Text>
+        <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.7 }]} onPress={submit} disabled={loading}>
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{t("signin.signIn")}</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={onGoToSignUp} style={{ marginTop: 18, alignItems: "center" }}>
+        <TouchableOpacity onPress={onGoToSignUp} style={{ marginTop: 18, alignItems: "center" }} disabled={loading}>
           <Text style={styles.link}>{t("signin.newHere")}</Text>
         </TouchableOpacity>
 

@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  role           String
+  firstName      String
+  lastName       String
+  licenseId      String   @unique
+  specialization String
+  email          String   @unique
+  phone          String
+  passwordHash   String
+  initials       String
+  createdAt      DateTime @default(now())
+}
+
+model Case {
+  id             String   @id
+  modality       String
+  priority       String
+  status         String   @default("pending")
+  note           String?
+  imageRequested Boolean  @default(false)
+  createdById    String
+  assignedToId   String?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  questions Question[]
+  images    CaseImage[]
+  messages  Message[]
+  auditLogs AuditLog[]
+}
+
+model Question {
+  id           String  @id @default(uuid())
+  caseId       String
+  case         Case    @relation(fields: [caseId], references: [id])
+  type         String
+  answered     Boolean @default(false)
+  answerText   String?
+  answeredById String?
+}
+
+model CaseImage {
+  id           String   @id @default(uuid())
+  caseId       String
+  case         Case     @relation(fields: [caseId], references: [id])
+  label        String
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  caseId      String
+  case        Case     @relation(fields: [caseId], references: [id])
+  senderId    String
+  content     String
+  replyToText String?
+  replyToIsQ  Boolean  @default(false)
+  sentAt      DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id])
+  userId    String
+  action    String
+  createdAt DateTime @default(now())
+}
