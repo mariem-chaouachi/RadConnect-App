@@ -43,11 +43,18 @@ router.post("/", async (req, res) => {
   }
 });
 
-// LIST cases
+// LIST cases — includes messages and audit logs so the dashboard's
+// "needs your reply" logic and the case detail screen both have what
+// they need from a single fetch, without a second request per case.
 router.get("/", async (req, res) => {
   try {
     const cases = await prisma.case.findMany({
-      include: { questions: true, images: true },
+      include: {
+        questions: true,
+        images: true,
+        messages: { orderBy: { sentAt: "asc" } },
+        auditLogs: { orderBy: { createdAt: "asc" } },
+      },
       orderBy: { createdAt: "desc" },
     });
     res.json(cases);
@@ -57,7 +64,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// GET one case (with its messages and audit log too, since the detail screen needs those)
+// GET one case in detail
 router.get("/:id", async (req, res) => {
   try {
     const c = await prisma.case.findUnique({
@@ -102,7 +109,6 @@ router.post("/:id/messages", async (req, res) => {
 
     await logAudit(req.params.id, req.userId, "messaged");
 
-    // Reopen logic: if the case was completed, a new message brings it back to "active"
     if (existingCase.status === "completed") {
       await prisma.case.update({
         where: { id: req.params.id },

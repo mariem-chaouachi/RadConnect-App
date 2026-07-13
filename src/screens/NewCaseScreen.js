@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { theme, MODALITIES, PRIORITIES, QUESTION_LABELS } from "../theme";
 import { Field } from "../components/UI";
@@ -12,10 +12,21 @@ export default function NewCaseScreen({ onSubmit, onCancel, isWide, t }) {
   const [qTypes, setQTypes] = useState([]);
   const [note, setNote] = useState("");
   const [images, setImages] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const toggleQ = (k) => setQTypes((qs) => (qs.includes(k) ? qs.filter((x) => x !== k) : [...qs, k]));
   const addImage = () => setImages((imgs) => [...imgs, { id: uid(), label: `${t("casedetail.imageLabelPrefix")} ${imgs.length + 1}` }]);
   const removeImage = (id) => setImages((imgs) => imgs.filter((i) => i.id !== id));
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit({ modality, priority, note, questionTypes: qTypes, images });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={{ padding: isWide ? 24 : 16, maxWidth: 560, width: "100%", alignSelf: "center" }}>
@@ -86,16 +97,22 @@ export default function NewCaseScreen({ onSubmit, onCancel, isWide, t }) {
       </Field>
 
       <View style={{ flexDirection: "row", marginTop: 8, marginBottom: 30 }}>
-        <TouchableOpacity onPress={onCancel} style={styles.cancelBtn}>
+        <TouchableOpacity onPress={onCancel} style={styles.cancelBtn} disabled={submitting}>
           <Text style={{ fontWeight: "700", fontSize: 13, color: theme.ink }}>{t("newcase.cancel")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          disabled={!patientId.trim()}
-          onPress={() => onSubmit({ modality, priority, note, questionTypes: qTypes, images })}
-          style={[styles.submitBtn, { backgroundColor: patientId.trim() ? theme.blue : theme.line }]}
+          disabled={!patientId.trim() || submitting}
+          onPress={handleSubmit}
+          style={[styles.submitBtn, { backgroundColor: (patientId.trim() && !submitting) ? theme.blue : theme.line }]}
         >
-          <Ionicons name="add" size={16} color="#fff" />
-          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13, marginLeft: 4 }}>{t("newcase.createCase")}</Text>
+          {submitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Ionicons name="add" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13, marginLeft: 4 }}>{t("newcase.createCase")}</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </ScrollView>

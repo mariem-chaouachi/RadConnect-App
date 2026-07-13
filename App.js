@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, SafeAreaView } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions, SafeAreaView, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 
@@ -7,8 +7,10 @@ import Logo from "./src/components/Logo";
 import { Avatar } from "./src/components/UI";
 import LanguageSwitch from "./src/components/LanguageSwitch";
 import { theme } from "./src/theme";
-import { DEMO_USERS, seedCases, seedMessages, seedAudit, uid, now } from "./src/data/seed";
+import { uid, now } from "./src/data/seed";
 import { translate } from "./src/i18n/translations";
+import { api, clearToken } from "./src/api";
+import { normalizeCase } from "./src/normalize";
 
 import SignInScreen from "./src/screens/SignInScreen";
 import SignUpScreen from "./src/screens/SignUpScreen";
@@ -20,24 +22,23 @@ import ProfileScreen from "./src/screens/ProfileScreen";
 
 export default function App() {
   const { width } = useWindowDimensions();
-  const isWide = width >= 760; // tablet / desktop-ish breakpoint
+  const isWide = width >= 760;
 
   const [lang, setLang] = useState("en");
   const t = (key, vars) => translate(lang, key, vars);
 
-  const [users, setUsers] = useState(DEMO_USERS);
   const [currentUser, setCurrentUser] = useState(null);
-  const [authScreen, setAuthScreen] = useState("signIn"); // signIn | signUp
+  const [authScreen, setAuthScreen] = useState("signIn");
 
-  const techId = DEMO_USERS[0].id;
-  const radId = DEMO_USERS[1].id;
-  const [cases, setCases] = useState(() => seedCases(techId, radId));
-  const [messages, setMessages] = useState(() => seedMessages(techId, radId));
-  const [audit, setAudit] = useState(() => seedAudit(techId, radId));
-  const [notifications, setNotifications] = useState([
-    { id: uid(), forRole: "radiologist", caseId: "RAD-2026-0731", type: "emergency", message: "New emergency case: RAD-2026-0731", read: false, count: 1, createdAt: now() - 1000 * 60 * 8 },
-    { id: uid(), forRole: "technician", caseId: "RAD-2026-0731", type: "reply", message: "Dr. Sami Trabelsi replied on RAD-2026-0731", read: false, count: 1, createdAt: now() - 1000 * 60 * 5 },
-  ]);
+  const [cases, setCases] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
+
+  // Notifications are still local-only for now — the backend has a Notification
+  // model in its schema, but no routes built for it yet. So these reset if the
+  // app restarts and aren't shared across devices. That's a known gap, not a bug.
+  const [notifications, setNotifications] = useState([]);
 
   const [view, setView] = useState("dashboard");
   const [activeCaseId, setActiveCaseId] = useState(null);
@@ -47,7 +48,25 @@ export default function App() {
     if (currentUser?.role === "radiologist") setStatusFilter("open");
   }, [currentUser?.id]);
 
-  const addAudit = (caseId, userId, action) => setAudit((a) => [...a, { id: uid(), caseId, userId, action, createdAt: now() }]);
+  // Fetch real cases + users whenever we have a logged-in user (i.e. right after
+  // sign-in/sign-up, and again after any action that changes case data).
+  async function refreshData() {
+    setDataError("");
+    try {
+      const [rawCases, rawUsers] = await Promise.all([api.listCases(), api.listUsers()]);
+      setCases(rawCases.map(normalizeCase));
+      setUsers(rawUsers);
+    } catch (err) {
+      setDataError(err.message);
+    }
+  }
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setDataLoading(true);
+    refreshData().finally(() => setDataLoading(false));
+  }, [currentUser?.id]);
+
   const addNotification = (forRole, caseId, type, message) =>
     setNotifications((n) => {
       const idx = n.findIndex((x) => x.forRole === forRole && x.caseId === caseId);
@@ -56,23 +75,20 @@ export default function App() {
       }
       const existing = n[idx];
       const updated = {
-        ...existing,
-        type, message, read: false,
-        count: existing.read ? 1 : existing.count + 1, // fresh cycle if it was already read, else keep tallying
+        ...existing, type, message, read: false,
+        count: existing.read ? 1 : existing.count + 1,
         createdAt: now(),
       };
-      const rest = n.filter((_, i) => i !== idx);
-      return [updated, ...rest];
+      return [updated, ...n.filter((_, i) => i !== idx)];
     });
 
   if (!currentUser) {
     return authScreen === "signIn" ? (
-      <SignInScreen users={users} onSignIn={setCurrentUser} onGoToSignUp={() => setAuthScreen("signUp")} t={t} lang={lang} setLang={setLang} />
+      <SignInScreen onSignIn={setCurrentUser} onGoToSignUp={() => setAuthScreen("signUp")} t={t} lang={lang} setLang={setLang} />
     ) : (
       <SignUpScreen
-        users={users}
         onGoToSignIn={() => setAuthScreen("signIn")}
-        onSignUp={(u) => { setUsers((arr) => [...arr, u]); setCurrentUser(u); }}
+        onSignUp={setCurrentUser}
         t={t} lang={lang} setLang={setLang}
       />
     );
@@ -81,84 +97,119 @@ export default function App() {
   const role = currentUser.role;
   const unreadCount = notifications.filter((n) => n.forRole === role && !n.read).length;
   const activeCase = cases.find((c) => c.id === activeCaseId) || null;
+  const allMessages = cases.flatMap((c) => c.messages);
 
-  function createCase(form) {
-    const id = `RAD-2026-${Math.floor(1000 + Math.random() * 8999)}`;
-    const newCase = {
-      id, modality: form.modality, priority: form.priority, status: "pending",
-      createdBy: currentUser.id, assignedRadiologist: null, createdAt: now(), completedAt: null,
-      note: form.note, questions: form.questionTypes.map((qt) => ({ id: uid(), type: qt, answered: false, answerText: null, answeredBy: null })),
-      images: form.images || [],
-      imageRequested: false,
-    };
-    setCases((c) => [newCase, ...c]);
-    addAudit(id, currentUser.id, "created");
-    addNotification("radiologist", id, form.priority, `New ${form.priority} case: ${id}`);
-    setActiveCaseId(id);
-    setView("caseDetail");
+  // Every action below follows the same shape: call the real API, show an
+  // alert if it fails, then refreshData() so local state matches the server.
+  async function createCase(form) {
+    try {
+      const newCase = await api.createCase({
+        modality: form.modality, priority: form.priority, note: form.note,
+        questionTypes: form.questionTypes, images: form.images,
+      });
+      addNotification("radiologist", newCase.id, form.priority, `New ${form.priority} case: ${newCase.id}`);
+      await refreshData();
+      setActiveCaseId(newCase.id);
+      setView("caseDetail");
+    } catch (err) {
+      Alert.alert("Couldn't create case", err.message);
+    }
   }
 
-  function sendMessage(caseId, content, replyTo = null) {
+  async function sendMessage(caseId, content, replyTo = null) {
     if (!content.trim()) return;
-    setMessages((m) => [...m, { id: uid(), caseId, senderId: currentUser.id, content, sentAt: now(), replyTo }]);
-    addAudit(caseId, currentUser.id, "messaged");
+    try {
+      const targetCase = cases.find((c) => c.id === caseId);
+      const wasCompleted = targetCase?.status === "completed";
+      const recipientRole = role === "technician" ? "radiologist" : "technician";
 
-    const targetCase = cases.find((c) => c.id === caseId);
-    const wasCompleted = targetCase?.status === "completed";
-    const recipientRole = role === "technician" ? "radiologist" : "technician";
+      await api.sendMessage(caseId, {
+        content,
+        replyToText: replyTo?.text ?? null,
+        replyToIsQ: !!replyTo?.isQuestion,
+      });
 
-    if (wasCompleted) {
-      setCases((cs) => cs.map((c) => c.id === caseId ? { ...c, status: "active", completedAt: null } : c));
-      addAudit(caseId, currentUser.id, "reopened");
-      addNotification(recipientRole, caseId, "reopened", `${currentUser.firstName} ${currentUser.lastName} reopened ${caseId} with a new message`);
-    } else {
-      addNotification(recipientRole, caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} replied on ${caseId}`);
+      if (wasCompleted) {
+        addNotification(recipientRole, caseId, "reopened", `${currentUser.firstName} ${currentUser.lastName} reopened ${caseId} with a new message`);
+      } else {
+        addNotification(recipientRole, caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} replied on ${caseId}`);
+      }
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't send message", err.message);
     }
   }
 
-  function answerQuestion(caseId, questionId, answerText, questionText) {
-    setCases((cs) => cs.map((c) => c.id !== caseId ? c : {
-      ...c, questions: c.questions.map((q) => q.id === questionId ? { ...q, answered: true, answerText, answeredBy: currentUser.id } : q),
-    }));
-    sendMessage(caseId, answerText, { text: questionText, isQuestion: true });
-    addAudit(caseId, currentUser.id, "decided");
-  }
-
-  function setCaseStatus(caseId, status) {
-    setCases((cs) => cs.map((c) => c.id !== caseId ? c : { ...c, status, completedAt: status === "completed" ? now() : c.completedAt }));
-    addAudit(caseId, currentUser.id, status);
-  }
-
-  function assignSelf(caseId) {
-    setCases((cs) => cs.map((c) => c.id !== caseId ? c : { ...c, assignedRadiologist: currentUser.id, status: c.status === "pending" ? "active" : c.status }));
-    addAudit(caseId, currentUser.id, "assigned");
-  }
-
-  function requestImage(caseId) {
-    setCases((cs) => cs.map((c) => c.id !== caseId ? c : { ...c, imageRequested: true }));
-    addAudit(caseId, currentUser.id, "image_requested");
-    addNotification("technician", caseId, "image_requested", `${currentUser.firstName} ${currentUser.lastName} requested an image for ${caseId}`);
-  }
-
-  function addImage(caseId, label) {
-    setCases((cs) => cs.map((c) => c.id !== caseId ? c : {
-      ...c, images: [...c.images, { id: uid(), label }], imageRequested: false,
-    }));
-    addAudit(caseId, currentUser.id, "image_added");
-    if (role === "technician") {
-      addNotification("radiologist", caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} added an image to ${caseId}`);
+  async function answerQuestion(caseId, questionId, answerText, questionText) {
+    try {
+      await api.answerQuestion(caseId, questionId, { answerText });
+      await api.sendMessage(caseId, { content: answerText, replyToText: questionText, replyToIsQ: true });
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't submit answer", err.message);
     }
   }
 
-  function openCase(caseId) {
+  async function setCaseStatus(caseId, status) {
+    try {
+      await api.setStatus(caseId, status);
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't update case", err.message);
+    }
+  }
+
+  async function assignSelf(caseId) {
+    try {
+      await api.assignSelf(caseId);
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't assign case", err.message);
+    }
+  }
+
+  async function requestImage(caseId) {
+    try {
+      await api.requestImage(caseId);
+      addNotification("technician", caseId, "image_requested", `${currentUser.firstName} ${currentUser.lastName} requested an image for ${caseId}`);
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't request image", err.message);
+    }
+  }
+
+  async function addImage(caseId, label) {
+    try {
+      await api.addImage(caseId, label);
+      if (role === "technician") {
+        addNotification("radiologist", caseId, "reply", `${currentUser.firstName} ${currentUser.lastName} added an image to ${caseId}`);
+      }
+      await refreshData();
+    } catch (err) {
+      Alert.alert("Couldn't add image", err.message);
+    }
+  }
+
+  async function openCase(caseId) {
     setActiveCaseId(caseId);
     setView("caseDetail");
-    addAudit(caseId, currentUser.id, "viewed");
+    try {
+      await api.getCase(caseId);
+      await refreshData();
+    } catch (err) {
+      console.log("Could not refresh after opening case:", err.message);
+    }
   }
 
   function updateProfile(updates) {
-    setUsers((arr) => arr.map((u) => u.id === currentUser.id ? { ...u, ...updates } : u));
     setCurrentUser((u) => ({ ...u, ...updates }));
+  }
+
+  function signOut() {
+    clearToken();
+    setCurrentUser(null);
+    setCases([]);
+    setUsers([]);
   }
 
   const NavItems = () => (
@@ -173,7 +224,6 @@ export default function App() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.paper }}>
       <StatusBar style="dark" />
-      {/* Top bar */}
       <View style={styles.topBar}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Logo size={28} />
@@ -200,7 +250,7 @@ export default function App() {
             <View style={{ marginTop: "auto" }}>
               <Text style={styles.userName}>{currentUser.firstName} {currentUser.lastName}</Text>
               <Text style={styles.userRole}>{role === "radiologist" ? currentUser.specialization : t("role.technician")}</Text>
-              <TouchableOpacity onPress={() => setCurrentUser(null)} style={{ marginTop: 8 }}>
+              <TouchableOpacity onPress={signOut} style={{ marginTop: 8 }}>
                 <Text style={{ color: theme.blue, fontSize: 12, fontWeight: "700" }}>{t("signOut")}</Text>
               </TouchableOpacity>
             </View>
@@ -208,49 +258,63 @@ export default function App() {
         ) : null}
 
         <View style={{ flex: 1 }}>
-          {view === "dashboard" && (
-            <DashboardScreen
-              cases={cases} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onOpen={openCase}
-              isWide={isWide} role={role} t={t} messages={messages} users={users}
-              onCompleteCase={(caseId) => setCaseStatus(caseId, "completed")}
-            />
-          )}
-          {view === "newCase" && <NewCaseScreen onSubmit={createCase} onCancel={() => setView("dashboard")} isWide={isWide} t={t} />}
-          {view === "caseDetail" && activeCase && (
-            <CaseDetailScreen
-              c={activeCase} role={role} currentUser={currentUser} users={users}
-              messages={messages.filter((m) => m.caseId === activeCase.id)}
-              auditLogs={audit.filter((a) => a.caseId === activeCase.id)}
-              onBack={() => setView("dashboard")}
-              onSend={(text, replyTo) => sendMessage(activeCase.id, text, replyTo)}
-              onAnswer={(qid, text, questionText) => answerQuestion(activeCase.id, qid, text, questionText)}
-              onSetStatus={(s) => setCaseStatus(activeCase.id, s)}
-              onAssignSelf={() => assignSelf(activeCase.id)}
-              onRequestImage={() => requestImage(activeCase.id)}
-              onAddImage={(label) => addImage(activeCase.id, label)}
-              isWide={isWide}
-              t={t}
-            />
-          )}
-          {view === "notifications" && (
-            <NotificationsScreen
-              items={notifications.filter((n) => n.forRole === role)}
-              onRead={(id) => setNotifications((n) => n.map((x) => x.id === id ? { ...x, read: true } : x))}
-              onOpen={openCase}
-              isWide={isWide}
-              t={t}
-            />
-          )}
-          {view === "profile" && (
-            <ProfileScreen
-              user={currentUser} onSave={updateProfile} onSignOut={() => setCurrentUser(null)}
-              isWide={isWide} t={t} lang={lang} setLang={setLang}
-            />
+          {dataLoading ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <ActivityIndicator color={theme.blue} size="large" />
+            </View>
+          ) : dataError ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <Text style={{ color: theme.coral, textAlign: "center", marginBottom: 12 }}>{dataError}</Text>
+              <TouchableOpacity onPress={refreshData} style={{ backgroundColor: theme.blue, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {view === "dashboard" && (
+                <DashboardScreen
+                  cases={cases} statusFilter={statusFilter} setStatusFilter={setStatusFilter} onOpen={openCase}
+                  isWide={isWide} role={role} t={t} messages={allMessages} users={users}
+                  onCompleteCase={(caseId) => setCaseStatus(caseId, "completed")}
+                />
+              )}
+              {view === "newCase" && <NewCaseScreen onSubmit={createCase} onCancel={() => setView("dashboard")} isWide={isWide} t={t} />}
+              {view === "caseDetail" && activeCase && (
+                <CaseDetailScreen
+                  c={activeCase} role={role} currentUser={currentUser} users={users}
+                  messages={activeCase.messages}
+                  auditLogs={activeCase.auditLogs}
+                  onBack={() => setView("dashboard")}
+                  onSend={(text, replyTo) => sendMessage(activeCase.id, text, replyTo)}
+                  onAnswer={(qid, text, questionText) => answerQuestion(activeCase.id, qid, text, questionText)}
+                  onSetStatus={(s) => setCaseStatus(activeCase.id, s)}
+                  onAssignSelf={() => assignSelf(activeCase.id)}
+                  onRequestImage={() => requestImage(activeCase.id)}
+                  onAddImage={(label) => addImage(activeCase.id, label)}
+                  isWide={isWide}
+                  t={t}
+                />
+              )}
+              {view === "notifications" && (
+                <NotificationsScreen
+                  items={notifications.filter((n) => n.forRole === role)}
+                  onRead={(id) => setNotifications((n) => n.map((x) => x.id === id ? { ...x, read: true } : x))}
+                  onOpen={openCase}
+                  isWide={isWide}
+                  t={t}
+                />
+              )}
+              {view === "profile" && (
+                <ProfileScreen
+                  user={currentUser} onSave={updateProfile} onSignOut={signOut}
+                  isWide={isWide} t={t} lang={lang} setLang={setLang}
+                />
+              )}
+            </>
           )}
         </View>
       </View>
 
-      {/* Bottom tab bar on phones */}
       {!isWide && (
         <View style={styles.bottomBar}>
           <NavItems />
